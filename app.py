@@ -9,15 +9,33 @@ from openai import OpenAI
 
 load_dotenv()
 
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OUTPUT_DIR = Path("outputs")
 OUTPUT_DIR.mkdir(exist_ok=True)
 
 st.set_page_config(page_title="Product Image Tool", layout="wide")
 st.title("🧼 Product Image Tool")
 
+st.sidebar.header("⚙️ API Settings")
+
+api_key_input = st.sidebar.text_input(
+    "Enter OpenAI API Key",
+    type="password"
+)
+
+OPENAI_API_KEY = api_key_input or os.getenv("OPENAI_API_KEY")
+
+model = st.sidebar.selectbox(
+    "Choose Image Model",
+    ["gpt-image-1"]
+)
+
+image_size = st.sidebar.selectbox(
+    "Image Size",
+    ["1024x1024", "1024x1536", "1536x1024"]
+)
+
 if not OPENAI_API_KEY:
-    st.error("Missing OPENAI_API_KEY in .env")
+    st.error("Please enter OPENAI_API_KEY in sidebar or .env")
     st.stop()
 
 client = OpenAI(api_key=OPENAI_API_KEY)
@@ -25,17 +43,21 @@ client = OpenAI(api_key=OPENAI_API_KEY)
 
 def edit_image(uploaded_file, prompt):
     result = client.images.edit(
-        model="gpt-image-1",
+        model=model,
         image=uploaded_file,
         prompt=prompt,
-        size="1024x1024",
+        size=image_size,
     )
 
     image_base64 = result.data[0].b64_json
     return base64.b64decode(image_base64)
 
 
-tab1, tab2 = st.tabs(["🧼 Clear Logo", "📸 Generate Different Angle"])
+tab1, tab2, tab3 = st.tabs([
+    "🧼 Clear Logo",
+    "🌐 Chinese to English",
+    "📸 Generate Different Angle",
+])
 
 with tab1:
     st.subheader("Clear Logo / Text / Watermark")
@@ -51,33 +73,89 @@ with tab1:
         value=(
             "Remove all visible logos, brand names, supplier names, watermarks, stickers, and printed text. "
             "Keep the exact same product, same camera angle, same shape, same material, same lighting, and same background. "
-            "Do not redesign the product. Fill removed areas naturally so it looks clean and unbranded."
+            "Do not redesign the product. Fill removed areas naturally so it looks clean and unbranded. "
+            "If I describe a location, only edit that area."
         ),
-        height=150,
+        height=170,
         key="clear_logo_prompt",
     )
 
     if uploaded_file:
         col1, col2 = st.columns(2)
+
         with col1:
             st.image(uploaded_file, caption="Original", use_container_width=True)
 
         if st.button("Clear Logo", key="clear_logo_button"):
             with st.spinner("Cleaning image..."):
-                image_bytes = edit_image(uploaded_file, prompt)
-                output_path = OUTPUT_DIR / f"cleaned_{int(time.time())}.png"
-                output_path.write_bytes(image_bytes)
+                try:
+                    image_bytes = edit_image(uploaded_file, prompt)
+                    output_path = OUTPUT_DIR / f"cleaned_{int(time.time())}.png"
+                    output_path.write_bytes(image_bytes)
 
-                with col2:
-                    st.image(image_bytes, caption="Cleaned Image", use_container_width=True)
-                    st.download_button(
-                        "Download cleaned image",
-                        data=image_bytes,
-                        file_name=output_path.name,
-                        mime="image/png",
-                    )
+                    with col2:
+                        st.image(image_bytes, caption="Cleaned Image", use_container_width=True)
+                        st.download_button(
+                            "Download cleaned image",
+                            data=image_bytes,
+                            file_name=output_path.name,
+                            mime="image/png",
+                        )
+
+                except Exception as e:
+                    st.error(f"Error: {e}")
+
 
 with tab2:
+    st.subheader("Translate Chinese Text to English")
+
+    uploaded_file_translate = st.file_uploader(
+        "Upload product image with Chinese text",
+        type=["png", "jpg", "jpeg", "webp"],
+        key="translate_upload",
+    )
+
+    translate_prompt = st.text_area(
+        "Translation/edit prompt",
+        value=(
+            "Translate all visible Chinese text in the product image into natural English. "
+            "Keep the same product, same camera angle, same layout, same background, and same design style. "
+            "Only replace the Chinese text with English text. "
+            "Do not redesign the product. "
+            "If the Chinese text is on a screen, control panel, label, or sticker, keep the English text in the same area. "
+            "If I describe a location, only edit that area."
+        ),
+        height=190,
+        key="translate_prompt",
+    )
+
+    if uploaded_file_translate:
+        col1, col2 = st.columns(2)
+
+        with col1:
+            st.image(uploaded_file_translate, caption="Original Chinese Image", use_container_width=True)
+
+        if st.button("Translate Chinese to English", key="translate_button"):
+            with st.spinner("Translating image text..."):
+                try:
+                    image_bytes = edit_image(uploaded_file_translate, translate_prompt)
+                    output_path = OUTPUT_DIR / f"translated_{int(time.time())}.png"
+                    output_path.write_bytes(image_bytes)
+
+                    with col2:
+                        st.image(image_bytes, caption="Translated Image", use_container_width=True)
+                        st.download_button(
+                            "Download translated image",
+                            data=image_bytes,
+                            file_name=output_path.name,
+                            mime="image/png",
+                        )
+
+                except Exception as e:
+                    st.error(f"Error: {e}")
+
+
+with tab3:
     st.subheader("Generate Different Product Angle")
 
     uploaded_file_angle = st.file_uploader(
@@ -100,20 +178,25 @@ with tab2:
 
     if uploaded_file_angle:
         col1, col2 = st.columns(2)
+
         with col1:
             st.image(uploaded_file_angle, caption="Reference Image", use_container_width=True)
 
         if st.button("Generate New Angle", key="angle_button"):
             with st.spinner("Generating new angle..."):
-                image_bytes = edit_image(uploaded_file_angle, angle_prompt)
-                output_path = OUTPUT_DIR / f"angle_{int(time.time())}.png"
-                output_path.write_bytes(image_bytes)
+                try:
+                    image_bytes = edit_image(uploaded_file_angle, angle_prompt)
+                    output_path = OUTPUT_DIR / f"angle_{int(time.time())}.png"
+                    output_path.write_bytes(image_bytes)
 
-                with col2:
-                    st.image(image_bytes, caption="New Angle Image", use_container_width=True)
-                    st.download_button(
-                        "Download new angle image",
-                        data=image_bytes,
-                        file_name=output_path.name,
-                        mime="image/png",
-                    )
+                    with col2:
+                        st.image(image_bytes, caption="New Angle Image", use_container_width=True)
+                        st.download_button(
+                            "Download new angle image",
+                            data=image_bytes,
+                            file_name=output_path.name,
+                            mime="image/png",
+                        )
+
+                except Exception as e:
+                    st.error(f"Error: {e}")
